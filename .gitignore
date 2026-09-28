@@ -1,0 +1,31 @@
+# Env files — secrets (private keys, DB creds) live only here, never committed
+.env
+.env.*
+!.env.example
+
+# Node / Hardhat (contracts/)
+node_modules/
+contracts/node_modules/
+contracts/cache/
+contracts/artifacts/
+contracts/typechain-types/
+contracts/coverage/
+contracts/coverage.json
+
+# Java / Gradle (backend/)
+backend/build/
+backend/.gradle/
+backend/out/
+!backend/gradle/wrapper/gradle-wrapper.jar
+*.class
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+
+# Logs
+*.log
