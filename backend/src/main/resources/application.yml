@@ -66,6 +66,10 @@ hashanchor:
     # Kafka's 5-minute max.poll.interval.ms).
     receipt-poll-interval: 500ms
     receipt-timeout: 30s
+  outbox:
+    # How often OutboxRelay checks for unpublished events — the worst-case
+    # delay between a submit and its event reaching Kafka.
+    poll-interval: 5s
   anchoring:
     # A record in ANCHORING whose row hasn't been touched for this long is
     # considered abandoned (see StaleAnchoringRecovery). Comfortably longer

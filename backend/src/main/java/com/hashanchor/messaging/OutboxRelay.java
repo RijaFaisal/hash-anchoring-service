@@ -46,7 +46,9 @@ public class OutboxRelay {
         this.kafkaTemplate = kafkaTemplate;
     }
 
-    @Scheduled(fixedDelay = 5000)
+    // fixedDelay: the next run starts this long after the previous one
+    // *finishes*, so runs never overlap even if a batch is slow.
+    @Scheduled(fixedDelayString = "${hashanchor.outbox.poll-interval}")
     public void relayUnpublishedEvents() {
         List<OutboxEvent> unpublished = outboxEventRepository.findByPublishedFalseOrderByCreatedAtAsc();
         for (OutboxEvent event : unpublished) {

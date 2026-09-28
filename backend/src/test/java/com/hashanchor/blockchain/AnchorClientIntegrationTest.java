@@ -2,6 +2,7 @@ package com.hashanchor.blockchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
 
+import com.hashanchor.support.HardhatChain;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
@@ -21,18 +22,9 @@ import org.web3j.protocol.http.HttpService;
  * whole application context (and therefore no Postgres/Kafka) just to
  * check that anchor()/verify() talk to a contract correctly.
  *
- * <p>Requires, before running:
- *
- * <ol>
- *   <li>{@code cd contracts && npx hardhat node} (leave running)
- *   <li>{@code npx hardhat ignition deploy ignition/modules/HashAnchor.ts --network localhost}
- *   <li>Export {@code HASHANCHOR_PRIVATE_KEY} (the deployer account printed
- *       by the node — it's also the contract owner) and
- *       {@code HASHANCHOR_CONTRACT_ADDRESS} (printed by the deploy command)
- * </ol>
- *
- * <p>Tagged {@code integration} so the default {@code ./gradlew test} skips
- * it; run it explicitly with {@code ./gradlew integrationTest}.
+ * <p>The chain is {@link HardhatChain}: a Hardhat node container with
+ * HashAnchor freshly deployed, so the only prerequisite is Docker.
+ * Tagged {@code integration}: run with {@code ./gradlew integrationTest}.
  */
 @Tag("integration")
 class AnchorClientIntegrationTest {
@@ -42,8 +34,7 @@ class AnchorClientIntegrationTest {
 
     @BeforeAll
     static void connect() {
-        String rpcUrl = System.getenv().getOrDefault("HASHANCHOR_RPC_URL", "http://localhost:8545");
-        web3j = Web3j.build(new HttpService(rpcUrl));
+        web3j = Web3j.build(new HttpService(HardhatChain.rpcUrl()));
     }
 
     @AfterAll
@@ -53,11 +44,11 @@ class AnchorClientIntegrationTest {
 
     @BeforeEach
     void setUpClient() {
-        Credentials credentials = Credentials.create(requireEnv("HASHANCHOR_PRIVATE_KEY"));
+        Credentials credentials = Credentials.create(HardhatChain.DEV_PRIVATE_KEY);
         anchorClient = new AnchorClient(
                 web3j,
                 credentials,
-                requireEnv("HASHANCHOR_CONTRACT_ADDRESS"),
+                HardhatChain.contractAddress(),
                 Duration.ofMillis(500),
                 Duration.ofSeconds(30));
     }
@@ -111,13 +102,5 @@ class AnchorClientIntegrationTest {
         byte[] bytes = new byte[32];
         new SecureRandom().nextBytes(bytes);
         return bytes;
-    }
-
-    private static String requireEnv(String name) {
-        String value = System.getenv(name);
-        if (value == null || value.isBlank()) {
-            throw new IllegalStateException(name + " must be set to run this integration test");
-        }
-        return value;
     }
 }

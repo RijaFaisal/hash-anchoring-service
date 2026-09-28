@@ -82,7 +82,7 @@ event with no record.
 
 ### 2. Relay — `OutboxRelay`
 
-A scheduled job (every 5 seconds) reads unpublished `outbox_events` rows
+A scheduled job (every 5 seconds by default, `hashanchor.outbox.poll-interval`) reads unpublished `outbox_events` rows
 oldest-first, publishes each to the Kafka topic `records.submitted` (keyed by
 record id, waiting for the broker's ack), and then marks the row published.
 
@@ -384,6 +384,7 @@ variables:
 | `hashanchor.blockchain.contract-address` | `HASHANCHOR_CONTRACT_ADDRESS` | **none — required** | Deployed `HashAnchor` |
 | `hashanchor.blockchain.receipt-poll-interval` | | `500ms` | |
 | `hashanchor.blockchain.receipt-timeout` | | `30s` | Must stay well under Kafka's 5-minute `max.poll.interval.ms` |
+| `hashanchor.outbox.poll-interval` | | `5s` | How often `OutboxRelay` publishes pending events |
 | `hashanchor.anchoring.stale-after` | `HASHANCHOR_STALE_AFTER` | `5m` | When an `ANCHORING` record counts as stuck |
 | `hashanchor.anchoring.stale-check-interval` | | `60s` | |
 | `spring.datasource.*` | | `localhost:5432/hashanchor` | Matches `docker-compose.yml` |
@@ -462,26 +463,54 @@ docker exec hash-anchor-kafka /opt/kafka/bin/kafka-console-consumer.sh \
 
 ## Tests
 
+`./gradlew test` needs nothing: plain unit tests, no Docker, no network.
+`./gradlew integrationTest` needs **Docker running**, and nothing else. Those
+tests start their own throwaway containers on random ports (Testcontainers)
+and never touch the docker compose stack or a hand-started Hardhat node.
+
 **Contracts** (`contracts/`): `npx hardhat test`
 
 **Backend unit tests** (`backend/`): `./gradlew test`
 
-- `AnchoringServiceTest` — the consumer's decision logic with the chain and
-  repository mocked: skip on `ANCHORED`/`FAILED`, verify-first, resume from
-  `ANCHORING`, failure-then-verify-says-anchored, genuine failure, `tx_hash`
-  recovery from logs, `markFailed`.
-- `VerificationServiceTest` — anchored / unknown / chain-overrules-database /
-  database-down / RPC failure for `/api/verify`.
-- `HashAnchorBackendApplicationTests` — Spring context smoke test. Connects to
-  the docker compose Postgres/Kafka, so those must be running; Kafka
-  listeners are disabled in this test so it never consumes real events.
+- `AnchoringServiceTest`: the consumer's decision logic with the chain and
+  repository mocked. Covers skip on `ANCHORED`/`FAILED`, verify-first,
+  resume from `ANCHORING`, failure-then-verify-says-anchored, genuine
+  failure, `tx_hash` recovery from logs, and `markFailed`.
+- `VerificationServiceTest`: `/api/verify` logic for anchored, unknown,
+  chain-overrules-database, database-down, and RPC failure.
 
 **Backend integration tests** (`backend/`): `./gradlew integrationTest`
 
-- `AnchorClientIntegrationTest` — real `anchor()`, `verify()`, event-log
-  lookup and block timestamps against a running Hardhat node. Needs the node
-  running, the contract deployed, and `HASHANCHOR_PRIVATE_KEY` /
-  `HASHANCHOR_CONTRACT_ADDRESS` exported. Excluded from `./gradlew test`.
+These run against **Postgres, Kafka and Hardhat node containers**. The
+Hardhat image is built from `backend/src/test/resources/hardhat/Dockerfile`
+(the same Hardhat version as `contracts/`), and `HashAnchor` is deployed to
+it from Java. Tests that boot the app extend `AbstractIntegrationTest`, so
+they all share one Spring context, with the outbox relay polling every
+200ms instead of 5s.
+
+- `HashAnchorBackendApplicationTests`: smoke test that boots the whole app
+  (migrations, JPA validation, Kafka listeners, web server).
+
+- `AnchoringPipelineIntegrationTest`: the full pipeline with nothing mocked.
+  Real HTTP to the running app, then outbox, relay, Kafka, consumer, chain,
+  and back out through `/api/verify`:
+  - a submitted file reaches `ANCHORED` and verifies with the same block,
+    `tx_hash` and record id;
+  - a file with one bit flipped fails verification (and a never-submitted
+    file is reported as not anchored);
+  - a duplicate event for an `ANCHORED` record is skipped, with no new
+    transaction;
+  - a duplicate event after a "lost" DB write is resolved from the chain
+    (same block, `tx_hash` from the event log), again with no new
+    transaction.
+- `AnchorClientIntegrationTest`: `anchor()`, `verify()`, event-log lookup
+  and block timestamps against the real chain.
+
+The first `integrationTest` run builds the Hardhat image (about a minute).
+It's kept locally as `hash-anchor-test-hardhat:3.18.0` so later runs skip
+that; delete it with `docker rmi` if you want the space back. If you bump
+Hardhat in `contracts/package.json`, bump `HARDHAT_VERSION` in that
+Dockerfile and the image tag in `HardhatChain` to match.
 
 ---
 
@@ -541,5 +570,5 @@ hashAnchoringService/
 - **Data:** PostgreSQL 16, Apache Kafka 3.8 in KRaft mode
 - **Chain:** Solidity 0.8.x, Hardhat 3 (local node for development), web3j;
   Polygon Amoy testnet as the eventual deployment target
-- **Tests:** JUnit 5, Mockito, AssertJ, Hardhat (mocha + ethers)
+- **Tests:** JUnit 5, Mockito, AssertJ, Awaitility, Testcontainers (Postgres, Kafka, Hardhat), Hardhat (mocha + ethers)
 - **Local infra:** Docker Compose

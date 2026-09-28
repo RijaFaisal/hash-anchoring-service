@@ -42,6 +42,13 @@ dependencies {
 	testImplementation("org.springframework.boot:spring-boot-starter-validation-test")
 	testImplementation("org.springframework.boot:spring-boot-starter-webmvc-test")
 	testImplementation("org.assertj:assertj-core")
+	// Throwaway Postgres/Kafka (and Hardhat) containers per test run, so
+	// tests never depend on docker compose being up. Versions come from
+	// Spring Boot's dependency management (Testcontainers 2.x).
+	testImplementation("org.testcontainers:testcontainers-postgresql")
+	testImplementation("org.testcontainers:testcontainers-kafka")
+	// "Wait until this becomes true" polling for the async pipeline.
+	testImplementation("org.awaitility:awaitility")
 	testCompileOnly("org.projectlombok:lombok")
 	testRuntimeOnly("org.junit.platform:junit-platform-launcher")
 	testAnnotationProcessor("org.projectlombok:lombok")
@@ -110,9 +117,13 @@ tasks.withType<Test> {
 	useJUnitPlatform()
 }
 
-// AnchorClientIntegrationTest needs a running local Hardhat node plus a
-// deployed contract (see backend/README or CLAUDE.md for the manual steps),
-// so it's excluded from the default `test` task and run explicitly instead.
+// `test` runs only plain unit tests: no Docker, no network, fast.
+// Anything tagged "integration" runs in the separate `integrationTest` task
+// instead: those tests start their own Postgres, Kafka and Hardhat node
+// containers via Testcontainers, so they need Docker running — but nothing
+// else (no docker compose, no hand-started Hardhat node). The Hardhat image
+// is built from src/test/resources/hardhat/Dockerfile; the first build takes
+// a minute or so, later runs reuse the cached image.
 tasks.named<Test>("test") {
 	useJUnitPlatform {
 		excludeTags("integration")
@@ -121,7 +132,7 @@ tasks.named<Test>("test") {
 
 val integrationTest by tasks.registering(Test::class) {
 	group = "verification"
-	description = "Runs tests tagged 'integration' (require a running local Hardhat node)"
+	description = "Runs tests tagged 'integration' (start Postgres, Kafka and Hardhat containers)"
 	testClassesDirs = sourceSets["test"].output.classesDirs
 	classpath = sourceSets["test"].runtimeClasspath
 	useJUnitPlatform {
