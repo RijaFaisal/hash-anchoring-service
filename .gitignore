@@ -3,6 +3,9 @@
 .env.*
 !.env.example
 
+# AI assistant instructions — local guidance only, not part of the repo
+CLAUDE.md
+
 # Node / Hardhat (contracts/)
 node_modules/
 contracts/node_modules/
