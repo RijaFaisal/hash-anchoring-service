@@ -35,3 +35,12 @@ spring:
 
 server:
   port: 8080
+
+hashanchor:
+  blockchain:
+    # Defaults to the local Hardhat node (`npx hardhat node`, in contracts/).
+    rpc-url: ${HASHANCHOR_RPC_URL:http://localhost:8545}
+    # No defaults for these two — a missing env var should fail startup
+    # loudly, not silently fall back to some placeholder key or address.
+    private-key: ${HASHANCHOR_PRIVATE_KEY}
+    contract-address: ${HASHANCHOR_CONTRACT_ADDRESS}

@@ -29,3 +29,9 @@
 
 # Snapshot cheatcodes output
 /snapshots
+
+# Ignition deployment record for the local Hardhat node (chain ID 31337) --
+# meaningless to commit since that chain resets every time. Deployment
+# records for real networks (e.g. Amoy) are NOT ignored: Ignition's own
+# guidance is to commit those for provenance.
+/ignition/deployments/chain-31337
