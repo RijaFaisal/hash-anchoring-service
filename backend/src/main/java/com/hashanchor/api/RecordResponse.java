@@ -17,6 +17,8 @@ public record RecordResponse(
         RecordStatus status,
         String txHash,
         Long blockNumber,
+        int attempts,
+        String lastError,
         Instant createdAt,
         Instant updatedAt) {
 
@@ -27,6 +29,8 @@ public record RecordResponse(
                 record.getStatus(),
                 record.getTxHash(),
                 record.getBlockNumber(),
+                record.getAttempts(),
+                record.getLastError(),
                 record.getCreatedAt(),
                 record.getUpdatedAt());
     }

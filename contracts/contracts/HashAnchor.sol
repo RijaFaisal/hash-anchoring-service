@@ -22,9 +22,10 @@ contract HashAnchor {
   }
 
   /// @notice Anchors `docHash` at the current block. Owner-only; reverts if
-  /// this hash was already anchored. The revert reason "Already anchored" is
-  /// relied on by the backend to distinguish a race (event redelivered after
-  /// the anchor already succeeded) from a real failure.
+  /// this hash was already anchored. The revert reasons are for humans (e.g.
+  /// reading a block explorer); the backend never branches on them, since
+  /// RPC providers and client libraries don't reliably surface them. After
+  /// any failed anchor() it calls verify() to decide what actually happened.
   function anchor(bytes32 docHash) external {
     require(msg.sender == owner, "Not authorized");
     require(!anchors[docHash].exists, "Already anchored");

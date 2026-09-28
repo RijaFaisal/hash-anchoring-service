@@ -3,9 +3,6 @@ package com.hashanchor.domain;
 import tools.jackson.databind.ObjectMapper;
 import com.hashanchor.persistence.OutboxEventRepository;
 import com.hashanchor.persistence.RecordRepository;
-import java.security.MessageDigest;
-import java.security.NoSuchAlgorithmException;
-import java.util.HexFormat;
 import java.util.Map;
 import java.util.Optional;
 import java.util.UUID;
@@ -47,20 +44,41 @@ public class RecordService {
      */
     @Transactional
     public DocumentRecord submit(byte[] documentBytes) {
-        String documentHash = sha256Hex(documentBytes);
+        String documentHash = DocumentHashes.sha256Hex(documentBytes);
 
         DocumentRecord record = new DocumentRecord();
         record.setDocumentHash(documentHash);
         record.setStatus(RecordStatus.PENDING);
         record = recordRepository.save(record);
 
+        enqueueSubmittedEvent(record);
+
+        return record;
+    }
+
+    /**
+     * Sends a record back through the pipeline: resets it to
+     * {@code PENDING} and queues a fresh {@code RecordSubmitted} outbox
+     * event, atomically — the same guarantee as {@link #submit}. Used by
+     * {@link StaleAnchoringRecovery} for records abandoned mid-attempt.
+     *
+     * <p>{@code save} throws {@code ObjectOptimisticLockingFailureException}
+     * if the anchoring consumer updated the row since {@code record} was
+     * read, which rolls back the outbox insert too.
+     */
+    @Transactional
+    public void requeueForAnchoring(DocumentRecord record) {
+        record.setStatus(RecordStatus.PENDING);
+        recordRepository.save(record);
+        enqueueSubmittedEvent(record);
+    }
+
+    private void enqueueSubmittedEvent(DocumentRecord record) {
         OutboxEvent event = new OutboxEvent();
         event.setRecordId(record.getId());
         event.setEventType("RecordSubmitted");
         event.setPayload(buildPayload(record));
         outboxEventRepository.save(event);
-
-        return record;
     }
 
     @Transactional(readOnly = true)
@@ -76,17 +94,6 @@ public class RecordService {
                             "documentHash", record.getDocumentHash()));
         } catch (Exception e) {
             throw new IllegalStateException("Failed to serialize outbox payload", e);
-        }
-    }
-
-    private static String sha256Hex(byte[] input) {
-        try {
-            MessageDigest digest = MessageDigest.getInstance("SHA-256");
-            return "0x" + HexFormat.of().formatHex(digest.digest(input));
-        } catch (NoSuchAlgorithmException e) {
-            // SHA-256 is a standard algorithm every JVM implementation is
-            // required to provide, so this is unreachable in practice.
-            throw new IllegalStateException(e);
         }
     }
 }

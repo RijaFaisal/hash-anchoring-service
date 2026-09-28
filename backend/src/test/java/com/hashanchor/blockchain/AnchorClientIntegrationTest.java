@@ -3,6 +3,8 @@ package com.hashanchor.blockchain;
 import static org.assertj.core.api.Assertions.assertThat;
 
 import java.security.SecureRandom;
+import java.time.Duration;
+import java.time.Instant;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -52,7 +54,12 @@ class AnchorClientIntegrationTest {
     @BeforeEach
     void setUpClient() {
         Credentials credentials = Credentials.create(requireEnv("HASHANCHOR_PRIVATE_KEY"));
-        anchorClient = new AnchorClient(web3j, credentials, requireEnv("HASHANCHOR_CONTRACT_ADDRESS"));
+        anchorClient = new AnchorClient(
+                web3j,
+                credentials,
+                requireEnv("HASHANCHOR_CONTRACT_ADDRESS"),
+                Duration.ofMillis(500),
+                Duration.ofSeconds(30));
     }
 
     @Test
@@ -77,6 +84,27 @@ class AnchorClientIntegrationTest {
         VerifyResult afterAnchoring = anchorClient.verify(docHash);
         assertThat(afterAnchoring.anchored()).isTrue();
         assertThat(afterAnchoring.blockNumber()).isEqualTo(anchored.blockNumber());
+    }
+
+    @Test
+    void findAnchorTransactionHashRecoversTheTransactionFromTheEventLog() throws Exception {
+        byte[] docHash = randomDocHash();
+        AnchorResult anchored = anchorClient.anchor(docHash);
+
+        assertThat(anchorClient.findAnchorTransactionHash(docHash, anchored.blockNumber()))
+                .contains(anchored.transactionHash());
+        // Right block, wrong hash: nothing.
+        assertThat(anchorClient.findAnchorTransactionHash(randomDocHash(), anchored.blockNumber()))
+                .isEmpty();
+    }
+
+    @Test
+    void getBlockTimestampReturnsWhenTheAnchoringBlockWasMined() throws Exception {
+        Instant before = Instant.now().minusSeconds(60);
+        AnchorResult anchored = anchorClient.anchor(randomDocHash());
+
+        assertThat(anchorClient.getBlockTimestamp(anchored.blockNumber()))
+                .isBetween(before, Instant.now().plusSeconds(60));
     }
 
     private static byte[] randomDocHash() {

@@ -27,6 +27,23 @@ spring:
       # With a single broker in dev this is just "the leader," but it's the
       # right default to carry into a real cluster later.
       acks: all
+    consumer:
+      # Consumers sharing a group-id split a topic's partitions between
+      # them, and the group's committed offsets record how far it has got.
+      # A second, independent consumer of records.submitted would use a
+      # different group-id and see every message too.
+      group-id: hash-anchor-anchoring
+      # Where to start when this group has no committed offset yet (first
+      # run): the beginning of the topic, so nothing published before the
+      # consumer existed is skipped.
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+    listener:
+      # Commit each message's offset as soon as the listener returns for
+      # it, rather than once per polled batch — after a crash, only the
+      # message in flight is redelivered, not the rest of its batch.
+      ack-mode: record
 
   servlet:
     multipart:
@@ -44,3 +61,14 @@ hashanchor:
     # loudly, not silently fall back to some placeholder key or address.
     private-key: ${HASHANCHOR_PRIVATE_KEY}
     contract-address: ${HASHANCHOR_CONTRACT_ADDRESS}
+    # How long anchor() waits for a transaction receipt before giving up on
+    # this attempt (see AnchorClient for why this must stay well under
+    # Kafka's 5-minute max.poll.interval.ms).
+    receipt-poll-interval: 500ms
+    receipt-timeout: 30s
+  anchoring:
+    # A record in ANCHORING whose row hasn't been touched for this long is
+    # considered abandoned (see StaleAnchoringRecovery). Comfortably longer
+    # than one full retry cycle, so live work is never mistaken for stuck.
+    stale-after: ${HASHANCHOR_STALE_AFTER:5m}
+    stale-check-interval: 60s

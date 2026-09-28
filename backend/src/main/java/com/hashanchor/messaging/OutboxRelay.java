@@ -28,8 +28,8 @@ import org.springframework.stereotype.Component;
  * next scheduled run sees that same row as unpublished and sends it to
  * Kafka again — so the same {@code RecordSubmitted} event can appear on the
  * topic twice. This makes delivery to {@code records.submitted}
- * at-least-once, never exactly-once. Every consumer of this topic (the
- * anchoring consumer in a later phase) must tolerate processing the same
+ * at-least-once, never exactly-once. Every consumer of this topic
+ * ({@link AnchoringConsumer}) must tolerate processing the same
  * event twice without double-anchoring — checking current status before
  * acting, not assuming each message is new.
  */
@@ -37,7 +37,6 @@ import org.springframework.stereotype.Component;
 public class OutboxRelay {
 
     private static final Logger log = LoggerFactory.getLogger(OutboxRelay.class);
-    static final String TOPIC = "records.submitted";
 
     private final OutboxEventRepository outboxEventRepository;
     private final KafkaTemplate<String, String> kafkaTemplate;
@@ -62,7 +61,7 @@ public class OutboxRelay {
             // the send fails) — we need to know which happened before
             // deciding whether to mark the row published, so there's no
             // benefit to treating the send as fire-and-forget here.
-            result = kafkaTemplate.send(TOPIC, event.getRecordId().toString(), event.getPayload()).get(10, TimeUnit.SECONDS);
+            result = kafkaTemplate.send(Topics.RECORDS_SUBMITTED, event.getRecordId().toString(), event.getPayload()).get(10, TimeUnit.SECONDS);
         } catch (Exception e) {
             log.warn("Failed to publish outbox event {} to Kafka; will retry on the next relay run", event.getId(), e);
             return;
