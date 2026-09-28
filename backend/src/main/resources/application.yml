@@ -1,0 +1,27 @@
+spring:
+  application:
+    name: hash-anchor-backend
+
+  datasource:
+    url: jdbc:postgresql://localhost:5432/hashanchor
+    username: hashanchor
+    password: hashanchor
+
+  jpa:
+    # Flyway owns the schema; Hibernate only checks its entity mappings
+    # against it at startup and fails fast on a mismatch. It never creates
+    # or alters tables itself — that would let the two get out of sync.
+    hibernate:
+      ddl-auto: validate
+    open-in-view: false
+
+  flyway:
+    enabled: true
+
+  servlet:
+    multipart:
+      max-file-size: 25MB
+      max-request-size: 25MB
+
+server:
+  port: 8080
