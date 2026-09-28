@@ -18,8 +18,9 @@ services:
       retries: 10
 
   # Single-node Kafka in KRaft mode (no ZooKeeper). apache/kafka is the
-  # official Apache image and ships multi-arch (amd64 + arm64), so it runs
-  # natively on Apple Silicon without emulation.
+  # official Apache image and ships multi-arch (amd64 + arm64) manifests,
+  # so it runs natively on this Mac's Intel (x86_64) chip or on Apple
+  # Silicon without emulation either way.
   kafka:
     image: apache/kafka:3.8.0
     container_name: hash-anchor-kafka

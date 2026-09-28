@@ -18,6 +18,16 @@ spring:
   flyway:
     enabled: true
 
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      # Wait for every in-sync replica to ack, not just the partition leader.
+      # With a single broker in dev this is just "the leader," but it's the
+      # right default to carry into a real cluster later.
+      acks: all
+
   servlet:
     multipart:
       max-file-size: 25MB
