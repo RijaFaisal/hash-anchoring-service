@@ -1,11 +1,13 @@
 package com.hashanchor.blockchain;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hashanchor.support.HardhatChain;
 import java.security.SecureRandom;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.BeforeEach;
@@ -44,13 +46,7 @@ class AnchorClientIntegrationTest {
 
     @BeforeEach
     void setUpClient() {
-        Credentials credentials = Credentials.create(HardhatChain.DEV_PRIVATE_KEY);
-        anchorClient = new AnchorClient(
-                web3j,
-                credentials,
-                HardhatChain.contractAddress(),
-                Duration.ofMillis(500),
-                Duration.ofSeconds(30));
+        anchorClient = clientRequiring(0, Duration.ofSeconds(60));
     }
 
     @Test
@@ -96,6 +92,51 @@ class AnchorClientIntegrationTest {
 
         assertThat(anchorClient.getBlockTimestamp(anchored.blockNumber()))
                 .isBetween(before, Instant.now().plusSeconds(60));
+    }
+
+    @Test
+    void awaitConfirmationsWithZeroConfirmationsReturnsTheGivenBlockAtOnce() throws Exception {
+        assertThat(anchorClient.awaitConfirmations(randomDocHash(), 123))
+                .isEqualTo(new VerifyResult(true, 123));
+    }
+
+    @Test
+    void awaitConfirmationsReturnsOnceEnoughBlocksAreMinedOnTop() throws Exception {
+        byte[] docHash = randomDocHash();
+        AnchorResult anchored = anchorClient.anchor(docHash);
+        // The Hardhat node mines one block per transaction, so two more
+        // anchors put two blocks on top of the first.
+        anchorClient.anchor(randomDocHash());
+        anchorClient.anchor(randomDocHash());
+
+        VerifyResult confirmed = clientRequiring(2, Duration.ofSeconds(5))
+                .awaitConfirmations(docHash, anchored.blockNumber());
+
+        assertThat(confirmed).isEqualTo(new VerifyResult(true, anchored.blockNumber()));
+    }
+
+    @Test
+    void awaitConfirmationsTimesOutWhenNoBlocksArrive() throws Exception {
+        byte[] docHash = randomDocHash();
+        AnchorResult anchored = anchorClient.anchor(docHash);
+
+        // No further transactions, so the node mines no further blocks.
+        assertThatThrownBy(() -> clientRequiring(3, Duration.ofSeconds(1))
+                        .awaitConfirmations(docHash, anchored.blockNumber()))
+                .isInstanceOf(TimeoutException.class);
+    }
+
+    private static AnchorClient clientRequiring(int confirmations, Duration confirmationTimeout) {
+        var properties = new BlockchainProperties(
+                HardhatChain.contractAddress(),
+                31337,
+                100_000,
+                null,
+                Duration.ofMillis(200),
+                Duration.ofSeconds(30),
+                confirmations,
+                confirmationTimeout);
+        return new AnchorClient(web3j, Credentials.create(HardhatChain.DEV_PRIVATE_KEY), properties);
     }
 
     private static byte[] randomDocHash() {

@@ -61,11 +61,28 @@ hashanchor:
     # loudly, not silently fall back to some placeholder key or address.
     private-key: ${HASHANCHOR_PRIVATE_KEY}
     contract-address: ${HASHANCHOR_CONTRACT_ADDRESS}
+    # Transactions are signed for this chain only (EIP-155), so pointing
+    # rpc-url at the wrong network gets them rejected, not executed. 31337
+    # is the local Hardhat node; the amoy profile overrides it.
+    chain-id: 31337
+    # anchor() uses ~46,500 gas; this leaves about 2x headroom. The node
+    # requires the sender to hold gas-limit x gas-price up front, so an
+    # oversized limit costs balance even though unused gas is refunded.
+    gas-limit: 100000
+    # max-gas-price-gwei (unset = no cap) bounds the node's eth_gasPrice
+    # suggestion; see NetworkGasProvider. Only the amoy profile needs it.
     # How long anchor() waits for a transaction receipt before giving up on
     # this attempt (see AnchorClient for why this must stay well under
     # Kafka's 5-minute max.poll.interval.ms).
     receipt-poll-interval: 500ms
     receipt-timeout: 30s
+    # Blocks mined on top of the anchoring block before a record is marked
+    # ANCHORED. 0 locally: the Hardhat node only mines a block when a
+    # transaction arrives, so waiting for more would hang. The amoy profile
+    # raises it. receipt-timeout + confirmation-timeout bounds one attempt,
+    # and must stay under both max.poll.interval.ms and stale-after.
+    confirmations: 0
+    confirmation-timeout: 60s
   outbox:
     # How often OutboxRelay checks for unpublished events — the worst-case
     # delay between a submit and its event reaching Kafka.

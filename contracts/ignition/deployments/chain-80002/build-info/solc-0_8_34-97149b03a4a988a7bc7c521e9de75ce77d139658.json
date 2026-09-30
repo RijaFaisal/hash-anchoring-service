@@ -1,0 +1,49 @@
+{
+  "_format": "hh3-sol-build-info-1",
+  "id": "solc-0_8_34-97149b03a4a988a7bc7c521e9de75ce77d139658",
+  "solcVersion": "0.8.34",
+  "solcLongVersion": "0.8.34+commit.80d5c536",
+  "compilerType": "solc",
+  "toolVersions": {
+    "hardhat": "3.18.0"
+  },
+  "userSourceNameMap": {
+    "contracts/HashAnchor.sol": "project/contracts/HashAnchor.sol"
+  },
+  "input": {
+    "language": "Solidity",
+    "settings": {
+      "evmVersion": "osaka",
+      "optimizer": {
+        "enabled": true,
+        "runs": 200
+      },
+      "outputSelection": {
+        "*": {
+          "": [
+            "ast"
+          ],
+          "*": [
+            "abi",
+            "evm.bytecode.linkReferences",
+            "evm.bytecode.object",
+            "evm.bytecode.opcodes",
+            "evm.bytecode.sourceMap",
+            "evm.deployedBytecode.immutableReferences",
+            "evm.deployedBytecode.linkReferences",
+            "evm.deployedBytecode.object",
+            "evm.deployedBytecode.opcodes",
+            "evm.deployedBytecode.sourceMap",
+            "evm.methodIdentifiers"
+          ]
+        }
+      },
+      "remappings": []
+    },
+    "sources": {
+      "project/contracts/HashAnchor.sol": {
+        "content": "// SPDX-License-Identifier: MIT\npragma solidity ^0.8.28;\n\n/// @title HashAnchor\n/// @notice Anchors document hashes on-chain so a document's existence and the\n/// block it was anchored in can later be verified without trusting an\n/// off-chain database.\ncontract HashAnchor {\n  address public immutable owner;\n\n  struct Anchor {\n    bool exists;\n    uint64 blockNumber;\n  }\n\n  mapping(bytes32 => Anchor) private anchors;\n\n  event HashAnchored(bytes32 indexed docHash, uint64 blockNumber);\n\n  constructor() {\n    owner = msg.sender;\n  }\n\n  /// @notice Anchors `docHash` at the current block. Owner-only; reverts if\n  /// this hash was already anchored. The revert reasons are for humans (e.g.\n  /// reading a block explorer); the backend never branches on them, since\n  /// RPC providers and client libraries don't reliably surface them. After\n  /// any failed anchor() it calls verify() to decide what actually happened.\n  function anchor(bytes32 docHash) external {\n    require(msg.sender == owner, \"Not authorized\");\n    require(!anchors[docHash].exists, \"Already anchored\");\n\n    anchors[docHash] = Anchor({exists: true, blockNumber: uint64(block.number)});\n    emit HashAnchored(docHash, uint64(block.number));\n  }\n\n  /// @notice Returns whether `docHash` has been anchored and, if so, the\n  /// block number it was anchored in (0 if not anchored).\n  function verify(bytes32 docHash) external view returns (bool, uint64) {\n    Anchor memory a = anchors[docHash];\n    return (a.exists, a.blockNumber);\n  }\n}\n"
+      }
+    }
+  }
+}

@@ -31,8 +31,9 @@ import org.web3j.utils.Numeric;
  *
  * <p>"Stale" means {@code updated_at} is older than {@code stale-after}.
  * The consumer touches the row at the start of every attempt, and a single
- * attempt is bounded by the receipt timeout, so a record that's actually
- * being worked on never looks stale. If this job and the consumer do race,
+ * attempt is bounded by {@code receipt-timeout} plus
+ * {@code confirmation-timeout}, so a record that's actually being worked on
+ * never looks stale. If this job and the consumer do race,
  * the {@code @Version} column makes the slower write fail rather than
  * clobber the faster one.
  */

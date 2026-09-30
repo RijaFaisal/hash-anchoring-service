@@ -27,6 +27,10 @@ import org.web3j.utils.Numeric;
  *   <li>If {@code anchor()} fails for any reason (revert, receipt timeout,
  *       RPC error), {@code verify()} decides whether it really failed. We
  *       never look at the revert string; the chain is the source of truth.
+ *   <li>Nothing is marked {@code ANCHORED} until the anchoring block has
+ *       {@code confirmations} blocks on top and {@code verify()} still
+ *       agrees (see {@link AnchorClient#awaitConfirmations}). If a reorg
+ *       dropped it, the attempt throws and the retry starts over.
  * </ul>
  *
  * <p><b>No DB transaction spans the chain calls.</b> Each {@code save} is
@@ -94,8 +98,15 @@ public class AnchoringService {
                 throw anchorFailure;
             }
 
-            markAnchored(record, result.transactionHash(), result.blockNumber());
-            log.info("Anchored record {} in tx {} at block {}", recordId, result.transactionHash(), result.blockNumber());
+            long confirmedBlock = awaitConfirmed(record, docHash, result.blockNumber());
+            if (confirmedBlock == result.blockNumber()) {
+                markAnchored(record, result.transactionHash(), confirmedBlock);
+            } else {
+                // A reorg moved the anchor to another block while we waited;
+                // take the tx hash from that block's event rather than assume.
+                markAnchoredFromEventLog(record, docHash, confirmedBlock);
+            }
+            log.info("Anchored record {} in tx {} at block {}", recordId, record.getTxHash(), confirmedBlock);
         } catch (Exception e) {
             recordLastError(record, e);
             throw e;
@@ -124,13 +135,33 @@ public class AnchoringService {
 
     /**
      * Marks a record {@code ANCHORED} when we learned it's on-chain from
-     * {@code verify()}, which only returns the block number. The
-     * transaction hash is recovered from that block's {@code HashAnchored}
-     * event. If the RPC call fails this throws, so the attempt is retried
-     * rather than the record being saved without a {@code tx_hash} it could
-     * have had.
+     * {@code verify()}, which only returns the block number — once that
+     * block has enough confirmations. The transaction hash is recovered
+     * from the block's {@code HashAnchored} event. If an RPC call fails
+     * this throws, so the attempt is retried rather than the record being
+     * saved without a {@code tx_hash} it could have had.
      */
     void markAnchoredFromChain(DocumentRecord record, byte[] docHash, long blockNumber) throws Exception {
+        markAnchoredFromEventLog(record, docHash, awaitConfirmed(record, docHash, blockNumber));
+    }
+
+    /**
+     * Waits for {@code confirmations} blocks on top of {@code blockNumber}
+     * and returns the block the hash is anchored in afterwards (normally
+     * the same one). Throws if the anchor is no longer on-chain, so the
+     * attempt is retried from the top — where {@code verify()} will send a
+     * fresh {@code anchor()} if it's really gone.
+     */
+    private long awaitConfirmed(DocumentRecord record, byte[] docHash, long blockNumber) throws Exception {
+        VerifyResult confirmed = anchorClient.awaitConfirmations(docHash, blockNumber);
+        if (!confirmed.anchored()) {
+            throw new IllegalStateException("Anchor for record " + record.getId() + " in block " + blockNumber
+                    + " is no longer on-chain (chain reorg) before reaching the confirmation depth");
+        }
+        return confirmed.blockNumber();
+    }
+
+    private void markAnchoredFromEventLog(DocumentRecord record, byte[] docHash, long blockNumber) throws Exception {
         String txHash = anchorClient.findAnchorTransactionHash(docHash, blockNumber).orElse(null);
         if (txHash == null) {
             log.warn("Record {} is anchored at block {} but no HashAnchored event was found there; "

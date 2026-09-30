@@ -1,6 +1,7 @@
 package com.hashanchor.blockchain;
 
 import org.springframework.beans.factory.annotation.Value;
+import org.springframework.boot.context.properties.EnableConfigurationProperties;
 import org.springframework.context.annotation.Bean;
 import org.springframework.context.annotation.Configuration;
 import org.web3j.crypto.Credentials;
@@ -14,8 +15,15 @@ import org.web3j.protocol.http.HttpService;
  * are plain Spring beans, built once and reused everywhere a contract call
  * is made — see {@link AnchorClient}, which is where the HashAnchor-specific
  * logic lives.
+ *
+ * <p>{@code @EnableConfigurationProperties} registers
+ * {@link BlockchainProperties} as a bean (bound and validated from
+ * {@code hashanchor.blockchain.*}), so {@link AnchorClient} can simply ask
+ * for it in its constructor. The RPC URL and private key are read here
+ * instead, to keep the key out of that record (see its Javadoc).
  */
 @Configuration
+@EnableConfigurationProperties(BlockchainProperties.class)
 public class BlockchainConfig {
 
     @Bean(destroyMethod = "shutdown")

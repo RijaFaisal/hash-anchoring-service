@@ -17,6 +17,7 @@ import com.hashanchor.persistence.RecordRepository;
 import java.io.IOException;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.TimeoutException;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.web3j.protocol.exceptions.TransactionException;
@@ -37,7 +38,7 @@ class AnchoringServiceTest {
     private DocumentRecord record;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         recordRepository = mock(RecordRepository.class);
         anchorClient = mock(AnchorClient.class);
         service = new AnchoringService(recordRepository, anchorClient);
@@ -50,6 +51,11 @@ class AnchoringServiceTest {
         // save() returns its argument, like a real repository returning the
         // managed copy.
         when(recordRepository.save(any())).thenAnswer(inv -> inv.getArgument(0));
+        // What AnchorClient does with confirmations = 0: confirm the block
+        // it was given, immediately. Tests of the confirmation wait itself
+        // override this.
+        when(anchorClient.awaitConfirmations(any(), anyLong()))
+                .thenAnswer(inv -> new VerifyResult(true, inv.getArgument(1)));
     }
 
     @Test
@@ -158,6 +164,54 @@ class AnchoringServiceTest {
 
         assertThat(record.getStatus()).isEqualTo(RecordStatus.ANCHORING);
         assertThat(record.getLastError()).contains("reverted");
+    }
+
+    @Test
+    void waitsForConfirmationsBeforeMarkingAnchored() throws Exception {
+        when(anchorClient.verify(any())).thenReturn(new VerifyResult(false, 0));
+        when(anchorClient.anchor(any())).thenReturn(new AnchorResult("0xtx", 42));
+
+        service.anchor(record.getId());
+
+        verify(anchorClient).awaitConfirmations(any(), eq(42L));
+        assertThat(record.getStatus()).isEqualTo(RecordStatus.ANCHORED);
+    }
+
+    @Test
+    void takesTheTxHashFromTheEventLogWhenAReorgMovedTheAnchor() throws Exception {
+        when(anchorClient.verify(any())).thenReturn(new VerifyResult(false, 0));
+        when(anchorClient.anchor(any())).thenReturn(new AnchorResult("0xtx", 42));
+        when(anchorClient.awaitConfirmations(any(), eq(42L))).thenReturn(new VerifyResult(true, 44));
+        when(anchorClient.findAnchorTransactionHash(any(), eq(44L))).thenReturn(Optional.of("0xfromlog"));
+
+        service.anchor(record.getId());
+
+        assertThat(record.getStatus()).isEqualTo(RecordStatus.ANCHORED);
+        assertThat(record.getBlockNumber()).isEqualTo(44);
+        assertThat(record.getTxHash()).isEqualTo("0xfromlog");
+    }
+
+    @Test
+    void retriesWhenAReorgDropsTheAnchorBeforeItIsConfirmed() throws Exception {
+        when(anchorClient.verify(any())).thenReturn(new VerifyResult(false, 0));
+        when(anchorClient.anchor(any())).thenReturn(new AnchorResult("0xtx", 42));
+        when(anchorClient.awaitConfirmations(any(), anyLong())).thenReturn(new VerifyResult(false, 0));
+
+        assertThatThrownBy(() -> service.anchor(record.getId())).isInstanceOf(IllegalStateException.class);
+
+        assertThat(record.getStatus()).isEqualTo(RecordStatus.ANCHORING);
+        assertThat(record.getLastError()).contains("reorg");
+    }
+
+    @Test
+    void alsoWaitsForConfirmationsWhenVerifyAlreadyShowsItOnChain() throws Exception {
+        when(anchorClient.verify(any())).thenReturn(new VerifyResult(true, 7));
+        when(anchorClient.awaitConfirmations(any(), anyLong())).thenThrow(new TimeoutException("head too low"));
+
+        assertThatThrownBy(() -> service.anchor(record.getId())).isInstanceOf(TimeoutException.class);
+
+        verify(anchorClient, never()).anchor(any());
+        assertThat(record.getStatus()).isEqualTo(RecordStatus.ANCHORING);
     }
 
     @Test

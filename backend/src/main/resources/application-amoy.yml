@@ -1,0 +1,30 @@
+# Overrides for running against the Polygon Amoy testnet. Spring loads this
+# on top of application.yml when the "amoy" profile is active
+# (--spring.profiles.active=amoy, or SPRING_PROFILES_ACTIVE=amoy); only the
+# keys set here change, everything else keeps its application.yml value.
+#
+# The private key and contract address still come from
+# HASHANCHOR_PRIVATE_KEY and HASHANCHOR_CONTRACT_ADDRESS, as in application.yml.
+hashanchor:
+  blockchain:
+    # PublicNode's free Amoy endpoint (Polygon's own rpc-amoy.polygon.technology
+    # no longer resolves). Set AMOY_RPC_URL for a dedicated provider — the
+    # same variable Hardhat's amoy network reads.
+    rpc-url: ${AMOY_RPC_URL:https://polygon-amoy-bor-rpc.publicnode.com}
+    chain-id: 80002
+    # Amoy's eth_gasPrice is skewed by a few transactions paying 500 gwei;
+    # nearly everything is mined at ~30 (Polygon's minimum tip is 25). At
+    # 50, one anchor() costs at most ~0.0023 POL.
+    max-gas-price-gwei: 50
+    # Amoy mines a block roughly every 2s, so polling faster than that only
+    # spends the public RPC's rate limit.
+    receipt-poll-interval: 2s
+    # A shared public mempool can take longer than a local node; still well
+    # under Kafka's 5-minute max.poll.interval.ms together with the
+    # confirmation wait below.
+    receipt-timeout: 60s
+    # ~10s of blocks on top of the anchoring block. Polygon PoS reorgs are
+    # rare and shallow, and milestones finalize within seconds; 5 blocks
+    # covers the common case without making the demo sluggish.
+    confirmations: 5
+    confirmation-timeout: 60s
